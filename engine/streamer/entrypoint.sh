@@ -140,12 +140,15 @@ ensure_fallback_visual() {
     return 0
   fi
   log "No visuals in ${VISUALS_DIR}; generating procedural fallback loop (60s)..."
-  if ! ffmpeg -y -hide_banner -nostdin -loglevel error \
+  # Backgrounded + wait so a stop signal during a slow first-boot encode
+  # still reaches the trap instead of riding out docker's kill grace.
+  ffmpeg -y -hide_banner -nostdin -loglevel error \
     -f lavfi \
     -i "gradients=size=${STREAM_WIDTH}x${STREAM_HEIGHT}:rate=${STREAM_FPS}:speed=0.015:nb_colors=4:c0=0x0B0A12:c1=0x1B1430:c2=0x241A3A:c3=0x101822:duration=60" \
     -vf "noise=alls=6:allf=t+u,vignette,format=yuv420p" \
     -c:v libx264 -preset veryfast -crf 22 -g "${GOP}" -pix_fmt yuv420p \
-    "${FALLBACK_MP4}"; then
+    "${FALLBACK_MP4}" &
+  if ! wait $!; then
     log "ERROR: failed to generate the fallback visual."
     return 1
   fi
@@ -160,7 +163,7 @@ build_concat_list() {
   shopt -s nullglob nocaseglob
   files=("${VISUALS_DIR}"/*.mp4)
   shopt -u nullglob nocaseglob
-  ignored="$(find "${VISUALS_DIR}" -maxdepth 1 -type f ! -iname '*.mp4' 2>/dev/null || true)"
+  ignored="$(find "${VISUALS_DIR}" -maxdepth 1 -type f ! -name '.*' ! -iname '*.mp4' 2>/dev/null || true)"
   if [ -n "${ignored}" ]; then
     log "WARNING: ignoring non-mp4 files in ${VISUALS_DIR} — run scripts/prep-visual.sh on them:"
     printf '%s\n' "${ignored}" >&2

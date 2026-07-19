@@ -4,7 +4,7 @@
 # Responsibilities:
 #   - randomized playlist of /music, reloaded whenever the directory changes
 #   - smart (volume-aware) crossfade between tracks
-#   - fallback chain: playlist -> ambient bed (if present) -> silence
+#   - fallback chain: playlist -> ambient bed (/assets, if present) -> silence
 #   - on every track change, atomically write /data/nowplaying.txt and
 #     /data/nowplaying.json for the streamer overlay and the web player
 #   - 320 kbps MP3 to icecast mount "radio"
@@ -15,7 +15,7 @@ settings.log.stdout := true
 settings.log.level := 3
 
 music_dir = "/music"
-fallback_file = "/music/.fallback/ambient-fallback.mp3"
+fallback_file = "/assets/ambient-fallback.mp3"
 nowplaying_txt = "/data/nowplaying.txt"
 nowplaying_json = "/data/nowplaying.json"
 
@@ -95,17 +95,11 @@ write_now_playing([])
 # --- sources ----------------------------------------------------------------
 
 # Shuffled playlist of everything under /music, reloaded whenever the
-# directory contents change. check_next rejects dotted paths so the emergency
-# bed in /music/.fallback/ never enters normal rotation (playlist() descends
-# into dot-directories; verified against liquidsoap 2.4 file.ls behavior).
-music =
-  playlist(
-    id="music",
-    mode="randomize",
-    reload_mode="watch",
-    check_next=fun (r) -> not string.contains(substring="/.", request.filename(r)),
-    music_dir
-  )
+# directory contents change. The emergency bed is mounted at /assets — NOT
+# under /music — because playlist() scans dot-directories too and a
+# check_next filter can't see filenames pre-resolution (request.filename is
+# empty until a request is resolved), so path filtering here is a no-op.
+music = playlist(id="music", mode="randomize", reload_mode="watch", music_dir)
 
 # Volume-aware crossfade between tracks.
 music = crossfade(duration=6.0, fade_in=2.0, fade_out=2.0, music)

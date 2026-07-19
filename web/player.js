@@ -270,6 +270,9 @@
   function renderTrack(line) {
     if (line === state.trackLine) return;
     state.trackLine = line;
+    // Cancel any pending swap in BOTH paths — a stale timer from before a
+    // reduced-motion flip would overwrite the new line with the old one.
+    window.clearTimeout(state.swapTimer);
     if (reducedMotion.matches) {
       els.npText.textContent = line;
       updateMarquee();
@@ -277,7 +280,6 @@
     }
     els.npText.classList.remove('marquee');
     els.npTrack.classList.add('is-swapping');
-    window.clearTimeout(state.swapTimer);
     state.swapTimer = window.setTimeout(() => {
       els.npText.textContent = line;
       els.npTrack.classList.remove('is-swapping');

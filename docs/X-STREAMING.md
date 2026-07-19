@@ -35,8 +35,9 @@ subscription — once subscribed, `studio.x.com` unlocks.
    Frankfurt, Paris, Dublin, Tokyo, Seoul, Singapore, Sydney, Mumbai, São Paulo.
    The region **cannot be changed later**; delete and recreate if you picked wrong.
 5. The source page shows your **RTMP URL** and **RTMP stream key**. Copy both.
-   An **RTMPS** URL is also offered — prefer it if shown (encrypted in transit);
-   plain RTMP works fine and is what this repo's example uses.
+   An **RTMPS** URL is also offered — prefer it (encrypted in transit; the
+   RTMPS form is what this repo's example uses). Plain RTMP remains available
+   as a fallback.
 
 Notes on keys and sources:
 

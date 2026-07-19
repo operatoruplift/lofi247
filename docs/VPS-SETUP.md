@@ -26,7 +26,8 @@ hundred MB. Disk: 20 GB base + your music/visuals library.
 3.7 Mbit/s × 86,400 s/day × 30 days ≈ 1.2 TB/month egress — just to X
 ```
 
-Web player listeners add ~160 kbps each on top. Compare that against provider
+Web player listeners add ~320 kbps each on top (they consume the Icecast MP3
+mount, which liquidsoap encodes at 320 kbps). Compare that against provider
 egress allowances before choosing.
 
 ### Provider options (prices as of mid-2026 — verify before buying)

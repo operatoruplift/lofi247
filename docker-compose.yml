@@ -59,6 +59,9 @@ services:
     volumes:
       - ./engine/liquidsoap/radio.liq:/radio.liq:ro
       - ./music:/music:ro
+      # Emergency bed lives OUTSIDE /music so the playlist can never pick it
+      # up as a normal track (liquidsoap scans dot-directories too).
+      - ./assets:/assets:ro
       - radio-data:/data
 
   # FFmpeg compositor: looping visuals + icecast audio + now-playing overlay

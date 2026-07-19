@@ -3,7 +3,7 @@
 # lofi247 — VPS bootstrap for Ubuntu 24.04
 #
 # Idempotent: safe to re-run at any time; every step checks before it acts.
-# Covers: base packages, Docker (get.docker.com), UFW rules, SSH hardening
+# Covers: base packages, Docker (official apt repo, GPG-verified), UFW rules, SSH hardening
 # (only when safe), and content directory permissions.
 #
 # Usage:

@@ -412,7 +412,6 @@ body.is-offair .badge-live .dot::after { display: none; }
 .site-footer p { margin: 0; text-align: center; }
 .foot-mark { color: var(--text); font-weight: 700; }
 .foot-sep { margin: 0 0.6em; opacity: 0.55; }
-.foot-note { opacity: 1; }
 
 body.is-offair #status-line { color: var(--ember); }
 

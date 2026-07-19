@@ -6,7 +6,6 @@
 # Media libraries live on the VPS, not in git
 music/*
 !music/.gitkeep
-!music/.fallback/
 visuals/*
 !visuals/.gitkeep
 # One starter loop ships with the repo so the first deploy looks branded
