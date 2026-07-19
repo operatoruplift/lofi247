@@ -1,0 +1,107 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Shell syntax
+        run: |
+          bash -n engine/streamer/entrypoint.sh
+          for f in scripts/*.sh; do bash -n "$f"; done
+
+      - name: ShellCheck
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq shellcheck
+          shellcheck -S error engine/streamer/entrypoint.sh scripts/*.sh
+
+      - name: JS parse check
+        run: node --check web/player.js
+
+      - name: Compose config
+        run: |
+          cp .env.example .env
+          docker compose config -q
+          docker compose -f docker-compose.yml -f docker-compose.ci.yml config -q
+
+  stack-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare env and a test track
+        run: |
+          cp .env.example .env
+          sed -i 's/^ICECAST_SOURCE_PASSWORD=.*/ICECAST_SOURCE_PASSWORD=ci-source-pass/' .env
+          sed -i 's/^ICECAST_ADMIN_PASSWORD=.*/ICECAST_ADMIN_PASSWORD=ci-admin-pass/' .env
+          sed -i 's#^X_RTMP_URL=.*#X_RTMP_URL=rtmp://rtmp-sink:1935/x#' .env
+          sed -i 's/^X_STREAM_KEY=.*/X_STREAM_KEY=ci-test/' .env
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+          ffmpeg -hide_banner -loglevel error \
+            -f lavfi -i "sine=frequency=440:duration=60" \
+            -metadata artist="CI Bot" -metadata title="Test Tone" \
+            -b:a 192k music/ci-tone.mp3
+
+      - name: Boot the stack
+        run: docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d --build
+
+      - name: Web player serves
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8080/ | grep -q "LOFI"; then
+              echo "web player up"; exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::web player never came up"; exit 1
+
+      - name: Liquidsoap writes now-playing metadata
+        run: |
+          for i in $(seq 1 60); do
+            artist="$(curl -fsS http://localhost:8080/nowplaying.json 2>/dev/null | jq -r '.artist // empty' || true)"
+            if [ -n "$artist" ]; then
+              echo "now playing artist: $artist"; exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::nowplaying.json never populated"; exit 1
+
+      - name: Audio streams through the /radio proxy
+        run: |
+          for i in $(seq 1 30); do
+            curl -fsS --max-time 5 http://localhost:8080/radio -o sample.mp3 || true
+            size=$(stat -c %s sample.mp3 2>/dev/null || echo 0)
+            if [ "$size" -gt 10000 ]; then
+              echo "captured ${size} bytes of stream"
+              file sample.mp3
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::no audio bytes from /radio"; exit 1
+
+      - name: Streamer pushes RTMP to the sink
+        run: |
+          for i in $(seq 1 90); do
+            if docker compose -f docker-compose.yml -f docker-compose.ci.yml logs rtmp-sink 2>/dev/null | grep -q SINK_GOT_STREAM; then
+              echo "sink ingested a full RTMP segment from the streamer"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::rtmp-sink never received a stream"; exit 1
+
+      - name: Dump logs on failure
+        if: failure()
+        run: docker compose -f docker-compose.yml -f docker-compose.ci.yml logs --tail 120
