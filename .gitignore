@@ -9,6 +9,9 @@ music/*
 !music/.fallback/
 visuals/*
 !visuals/.gitkeep
+# One starter loop ships with the repo so the first deploy looks branded
+# before any Seedance clips exist.
+!visuals/00-dusk-drift.mp4
 downloads/*
 !downloads/.gitkeep
 
