@@ -1,0 +1,21 @@
+# Secrets — never commit real environment files (or backups of them);
+# the negation keeps the documented template tracked.
+.env*
+!.env.example
+
+# Media libraries live on the VPS, not in git
+music/*
+!music/.gitkeep
+!music/.fallback/
+visuals/*
+!visuals/.gitkeep
+downloads/*
+!downloads/.gitkeep
+
+# Runtime state (now-playing lives in the radio-data named volume, not a
+# host dir; slskd keeps its app state in ./slskd)
+slskd/
+*.log
+
+# OS noise
+.DS_Store

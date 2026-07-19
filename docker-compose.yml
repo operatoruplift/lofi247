@@ -1,0 +1,142 @@
+# LOFI 247 — 24/7 lofi radio that streams to X (Twitter) via RTMP.
+#
+#   music/ -> liquidsoap -> icecast -> streamer (ffmpeg) -> X RTMP
+#                                   -> web (nginx player on :8080)
+#
+# Copy .env.example to .env before starting. Optional Soulseek client:
+#   docker compose --profile acquire up -d slskd
+
+name: lofi247
+
+services:
+  # Audio distribution. Internal-only: reachable as http://icecast:8000.
+  icecast:
+    image: libretime/icecast:2.5.0
+    restart: unless-stopped
+    environment:
+      ICECAST_SOURCE_PASSWORD: ${ICECAST_SOURCE_PASSWORD:?set ICECAST_SOURCE_PASSWORD in .env}
+      ICECAST_ADMIN_PASSWORD: ${ICECAST_ADMIN_PASSWORD:?set ICECAST_ADMIN_PASSWORD in .env}
+      # Not used by this stack, but never leave the image default ("hackme") live.
+      ICECAST_RELAY_PASSWORD: ${ICECAST_SOURCE_PASSWORD:?set ICECAST_SOURCE_PASSWORD in .env}
+      ICECAST_MAX_CLIENTS: "250"
+      ICECAST_MAX_SOURCES: "4"
+    healthcheck:
+      # debian-slim image has bash but no curl/wget; a TCP connect is enough.
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8000"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # One-shot: hand the shared radio-data volume to the non-root uid that
+  # liquidsoap runs as, then exit.
+  data-init:
+    image: alpine:3.22
+    restart: "no"
+    command: ["chown", "-R", "10000:10000", "/data"]
+    volumes:
+      - radio-data:/data
+
+  # Playlist engine: plays /music, publishes to icecast, writes now-playing
+  # files into the shared radio-data volume.
+  liquidsoap:
+    image: savonet/liquidsoap:v2.4.5
+    restart: unless-stopped
+    depends_on:
+      icecast:
+        condition: service_healthy
+      data-init:
+        condition: service_completed_successfully
+    # Dedicated non-root uid; data-init pre-owns /data for it. HOME points at
+    # the writable volume so liquidsoap's script cache has somewhere to live.
+    user: "10000:10000"
+    command: ["/radio.liq"]
+    environment:
+      ICECAST_SOURCE_PASSWORD: ${ICECAST_SOURCE_PASSWORD:?set ICECAST_SOURCE_PASSWORD in .env}
+      STATION_NAME: ${STATION_NAME:-LOFI 247}
+      HOME: /data
+      XDG_CACHE_HOME: /data/.cache
+    volumes:
+      - ./engine/liquidsoap/radio.liq:/radio.liq:ro
+      - ./music:/music:ro
+      - radio-data:/data
+
+  # FFmpeg compositor: looping visuals + icecast audio + now-playing overlay
+  # -> RTMP to X. Never crash-loops fast; see engine/streamer/entrypoint.sh.
+  streamer:
+    build:
+      context: ./engine/streamer
+    restart: unless-stopped
+    depends_on:
+      icecast:
+        condition: service_healthy
+      liquidsoap:
+        condition: service_started
+    environment:
+      X_RTMP_URL: ${X_RTMP_URL:-}
+      X_STREAM_KEY: ${X_STREAM_KEY:-}
+      STREAM_WIDTH: ${STREAM_WIDTH:-1280}
+      STREAM_HEIGHT: ${STREAM_HEIGHT:-720}
+      STREAM_FPS: ${STREAM_FPS:-30}
+      VIDEO_BITRATE: ${VIDEO_BITRATE:-3500k}
+      AUDIO_BITRATE: ${AUDIO_BITRATE:-160k}
+      STATION_NAME: ${STATION_NAME:-LOFI 247}
+      OVERLAY_HANDLE: ${OVERLAY_HANDLE:-@yourhandle}
+    volumes:
+      - ./visuals:/visuals:ro
+      - radio-data:/data:ro
+
+  # Browser player: static site + same-origin /radio proxy + /nowplaying.json.
+  web:
+    image: nginx:1.30.4-alpine
+    restart: unless-stopped
+    depends_on:
+      icecast:
+        condition: service_started
+    ports:
+      - "8080:80"
+    volumes:
+      - ./web:/usr/share/nginx/html:ro
+      - ./engine/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - radio-data:/data:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # OPTIONAL Soulseek client (compose profile "acquire"). Downloads land in
+  # ./downloads and are NEVER auto-fed to the broadcast — a human curates
+  # tracks into ./music via scripts/ingest-music.sh. Only stream music you
+  # have the rights to rebroadcast (see docs/MUSIC.md).
+  #
+  # BEFORE starting this profile: set a strong SLSKD_PASSWORD in .env. The
+  # web UI guards your Soulseek credentials; an empty or default password is
+  # an account takeover waiting to happen. (No ":?" guard here on purpose —
+  # compose interpolates variables even when a profile is inactive, and a
+  # guard would break plain "docker compose up -d".)
+  slskd:
+    image: slskd/slskd:0.25.1
+    profiles: ["acquire"]
+    restart: unless-stopped
+    ports:
+      # Web UI: localhost only — Docker publishes bypass UFW, so a plain
+      # "5030:5030" would be internet-reachable. Access via SSH tunnel:
+      #   ssh -L 5030:localhost:5030 <user>@<vps>
+      - "127.0.0.1:5030:5030"
+      # Soulseek peer port: intentionally public while the profile runs.
+      - "50300:50300"
+    environment:
+      SLSKD_USERNAME: ${SLSKD_USERNAME:-slskd}
+      SLSKD_PASSWORD: ${SLSKD_PASSWORD:-}
+      SLSKD_SLSK_USERNAME: ${SLSKD_SLSK_USERNAME:-}
+      SLSKD_SLSK_PASSWORD: ${SLSKD_SLSK_PASSWORD:-}
+      SLSKD_DOWNLOADS_DIR: /downloads
+      SLSKD_INCOMPLETE_DIR: /downloads/incomplete
+    volumes:
+      - ./downloads:/downloads
+      - ./slskd:/app
+
+volumes:
+  radio-data:
