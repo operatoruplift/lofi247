@@ -142,19 +142,61 @@ One port **is** intentionally public while slskd runs:
 
 ## 5. Deploy
 
+Steps 2–4 above are exactly what the bootstrap script automates. If you did them
+by hand you can jump to **Clone and launch**. From a bare box, do it in this
+order — the ordering is not optional, because the bootstrap is what *creates* the
+`lofi` user, so you cannot `ssh lofi@your-vps` until after it has run.
+
+### Step 1 — bootstrap (as `root`, once)
+
+The script lives in the repo, so grab the repo first just to run it (a fresh
+Ubuntu image may not ship `git`):
+
 ```bash
-ssh lofi@your-vps
-git clone https://github.com/YOURNAME/lofi247.git
-cd lofi247
+# on the fresh box, logged in as root
+apt-get update && apt-get install -y git
+git clone https://github.com/YOURNAME/lofi247.git /root/lofi247-bootstrap
+/root/lofi247-bootstrap/scripts/vps-setup.sh
+```
 
-# Or run the bootstrap first if you skipped steps 2–4:
-sudo ./scripts/vps-setup.sh
+This creates the `lofi` user, installs Docker (+ the compose plugin), opens the
+firewall, and hardens SSH. It is idempotent — safe to re-run. `/root/lofi247-bootstrap`
+is a throwaway copy used only to launch the script; the real, `lofi`-owned checkout
+comes in step 3.
 
+> [!IMPORTANT]
+> The bootstrap creates `lofi` with **no password and no SSH key yet**, so it does
+> *not* disable password auth (that would lock you out — see section 2). Two ways
+> to become `lofi`:
+> - **Quickest:** `su - lofi` from your current root session. A fresh login shell
+>   is also what activates the new `docker` group membership.
+> - **Hardened box:** first give `lofi` your key from the root session
+>   (`rsync --archive --chown=lofi:lofi ~/.ssh /home/lofi`), confirm a **new**
+>   `ssh lofi@your-vps` session works with it, then re-run the bootstrap so it
+>   enforces key-only auth.
+
+### Step 2 — become `lofi`
+
+`su - lofi` (or reconnect over SSH as `lofi` once its key is in place). Everything
+below runs as `lofi`.
+
+### Step 3 — clone and launch
+
+Clone into the default `REPO_DIR` (`/home/lofi/lofi247`) and bring the stack up:
+
+```bash
+git clone https://github.com/YOURNAME/lofi247.git ~/lofi247
+cd ~/lofi247
 cp .env.example .env
 nano .env      # X_RTMP_URL, X_STREAM_KEY, Icecast passwords, station branding
-
 docker compose up -d
 ```
+
+No X stream key yet? Leave `X_STREAM_KEY` at its placeholder and the streamer runs
+in **preview mode** — Icecast and the `:8080` web player come up while the encoder
+stays idle, so you can verify the stack before you have X Premium or a key (see
+[X-STREAMING.md](X-STREAMING.md#3-put-them-in-env)). Add music and visuals next
+(section 6), then `./scripts/status.sh` to confirm.
 
 With the optional Soulseek client:
 
@@ -162,18 +204,27 @@ With the optional Soulseek client:
 docker compose --profile acquire up -d
 ```
 
+> [!NOTE]
+> **Cloning somewhere other than `/home/<user>/lofi247`?** The bootstrap's
+> `REPO_DIR` defaults to `/home/${LOFI_USER}/lofi247`. If your checkout lives
+> elsewhere, pass the path when you run (or re-run) the script so it prepares the
+> right content directories: `sudo REPO_DIR=/srv/lofi247 ./scripts/vps-setup.sh`.
+> The `music/`, `visuals/`, and `downloads/` directories otherwise come from the
+> clone itself — re-running the bootstrap after cloning just (re)asserts their
+> ownership and permissions.
+
 ## 6. Getting music and visuals onto the box
 
 From your **local machine** (rsync is resumable and only transfers changes):
 
 ```bash
-# music library → broadcast folder
-rsync -av --progress ~/lofi-library/ lofi@your-vps:~/lofi247/music/
+# music library → broadcast folder (--chmod=F644: see the permissions note below)
+rsync -av --progress --chmod=F644 ~/lofi-library/ lofi@your-vps:~/lofi247/music/
 
 # ambient video loops
-rsync -av --progress ~/loops/ lofi@your-vps:~/lofi247/visuals/
+rsync -av --progress --chmod=F644 ~/loops/ lofi@your-vps:~/lofi247/visuals/
 
-# one-off files, scp works too
+# one-off files, scp works too (then chmod 644 on the box if your umask is tight)
 scp track.mp3 lofi@your-vps:~/lofi247/music/
 ```
 

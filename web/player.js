@@ -10,6 +10,7 @@
   const STATION_FALLBACK_LINE = `${STATION_NAME} — beats till sunrise`;
   const STREAM_URL = '/radio';
   const NOWPLAYING_URL = '/nowplaying.json';
+  const CONFIG_URL = '/config.json';
   const POLL_INTERVAL_MS = 5000;
   const OFFLINE_AFTER_FAILURES = 3;
   const AUDIO_RETRY_MS = 6000;
@@ -19,6 +20,15 @@
   const MARQUEE_PX_PER_SECOND = 18;
   const BAR_COUNT = 48;
   const STORAGE_KEY = 'lofi247-player';
+
+  // Neutral pre-signal copy — the badge must not assert "live" until real audio
+  // is proven (a successful nowplaying poll or the audio 'playing' event).
+  const CONNECTING_LABEL = 'connecting';
+  const CONNECTING_STATUS = 'tuning in…';
+
+  // The active now-playing fallback line. Defaults to the station line above but
+  // /config.json (applyStationConfig) can rebrand it at runtime.
+  let activeFallbackLine = STATION_FALLBACK_LINE;
 
   const $ = (id) => document.getElementById(id);
   const els = {
@@ -33,6 +43,8 @@
     statusLine: $('status-line'),
     xLink: $('x-link'),
     canvas: $('viz'),
+    wordmarkLofi: document.querySelector('.wordmark-lofi'),
+    wordmark247: document.querySelector('.wordmark-247'),
   };
 
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -42,6 +54,10 @@
     wantsPlayback: false,
     isPlaying: false,
     audioDown: false,
+    // Latches true the first time real audio is proven (a successful nowplaying
+    // poll or the audio 'playing' event). Until then the badge stays neutral
+    // ("connecting") rather than asserting "live" on faith.
+    hasSignal: false,
     npFailures: 0,
     trackLine: '',
     retryTimer: 0,
@@ -67,9 +83,13 @@
     if (audioCtx) return;
     const Ctx = window.AudioContext || window.webkitAudioContext;
     if (!Ctx) return; // playback still works, visualizer stays idle
+    // Declared out here so the catch can still reach it: once
+    // createMediaElementSource() reroutes the element into the graph, a later
+    // node failure would otherwise trap its audio in a dead graph -> silence.
+    let source = null;
     try {
       audioCtx = new Ctx();
-      const source = audioCtx.createMediaElementSource(els.audio);
+      source = audioCtx.createMediaElementSource(els.audio);
       analyser = audioCtx.createAnalyser();
       analyser.fftSize = 256;
       analyser.smoothingTimeConstant = 0.82;
@@ -85,6 +105,14 @@
       analyser = null;
       freqData = null;
       gainNode = null;
+      // The visualizer graph failed. If the element was already captured,
+      // route it straight to the speakers so audio still plays instead of
+      // being trapped, silent, in a half-built graph.
+      if (source && audioCtx) {
+        try {
+          source.connect(audioCtx.destination);
+        } catch (err2) { /* best effort — nothing more we can do */ }
+      }
     }
   }
 
@@ -196,13 +224,16 @@
     }
     els.volume.value = String(level);
     els.volume.style.setProperty('--fill', `${Math.round(level * 100)}%`);
+    // Announce a percentage to assistive tech instead of the raw 0–1 value.
+    els.volume.setAttribute('aria-valuetext', `${Math.round(level * 100)}%`);
     if (persist) persistPrefs();
   }
 
   function setMuted(muted, { persist = true } = {}) {
     els.audio.muted = muted;
     els.muteBtn.classList.toggle('is-muted', muted);
-    els.muteBtn.setAttribute('aria-pressed', String(muted));
+    // No aria-pressed: the Mute/Unmute aria-label already conveys state; pairing
+    // both makes AT announce "Unmute, pressed" (double-signalled).
     els.muteBtn.setAttribute('aria-label', muted ? 'Unmute' : 'Mute');
     if (persist) persistPrefs();
   }
@@ -239,7 +270,7 @@
     const artist = typeof data?.artist === 'string' ? data.artist.trim() : '';
     const title = typeof data?.title === 'string' ? data.title.trim() : '';
     if (artist && title) return `${artist} — ${title}`;
-    return title || artist || STATION_FALLBACK_LINE;
+    return title || artist || activeFallbackLine;
   }
 
   async function pollNowPlaying() {
@@ -254,6 +285,7 @@
       if (!res.ok) throw new Error(`http ${res.status}`);
       const data = await res.json();
       state.npFailures = 0;
+      state.hasSignal = true; // real metadata arrived — the stream is proven
       renderTrack(trackLineFrom(data));
     } catch (err) {
       state.npFailures += 1;
@@ -261,7 +293,7 @@
       // aria-live announcement); degrade only past the same threshold the
       // badge uses. With nothing known yet, show the station line right away.
       if (!state.trackLine || state.npFailures >= OFFLINE_AFTER_FAILURES) {
-        renderTrack(STATION_FALLBACK_LINE);
+        renderTrack(activeFallbackLine);
       }
     }
     renderLiveState();
@@ -303,6 +335,20 @@
   }
 
   function renderLiveState() {
+    // Until real audio is proven, hold the neutral "connecting" state rather
+    // than guessing live/off-air on first paint or during the first outage.
+    if (!state.hasSignal) {
+      document.body.classList.add('is-connecting');
+      document.body.classList.remove('is-offair');
+      if (els.liveLabel.textContent !== CONNECTING_LABEL) {
+        els.liveLabel.textContent = CONNECTING_LABEL;
+      }
+      if (els.statusLine.textContent !== CONNECTING_STATUS) {
+        els.statusLine.textContent = CONNECTING_STATUS;
+      }
+      return;
+    }
+    document.body.classList.remove('is-connecting');
     const offAir = state.audioDown || state.npFailures >= OFFLINE_AFTER_FAILURES;
     document.body.classList.toggle('is-offair', offAir);
     // liveLabel sits in a role=status region: rewriting an identical text
@@ -519,10 +565,54 @@
     if (handle) els.xLink.href = `https://x.com/${handle}`;
   }
 
+  /* ---------------------------------------------------------- *
+   * station identity (optional branding from /config.json)
+   * ---------------------------------------------------------- */
+
+  function applyStationName(name) {
+    const station = typeof name === 'string' ? name.trim() : '';
+    if (!station) return;
+    activeFallbackLine = `${station} — beats till sunrise`;
+    document.title = activeFallbackLine;
+    // Split on the LAST space: first part -> .wordmark-lofi, last token ->
+    // .wordmark-247 (so "LOFI 247" reproduces exactly and "MIDNIGHT FM" ->
+    // "MIDNIGHT"/"FM"). A single-word name fills lofi and empties 247.
+    const lastSpace = station.lastIndexOf(' ');
+    if (els.wordmarkLofi) {
+      els.wordmarkLofi.textContent =
+        lastSpace === -1 ? station : station.slice(0, lastSpace);
+    }
+    if (els.wordmark247) {
+      els.wordmark247.textContent =
+        lastSpace === -1 ? '' : station.slice(lastSpace + 1);
+    }
+  }
+
+  async function applyStationConfig() {
+    let config = null;
+    try {
+      const res = await fetch(CONFIG_URL, { cache: 'no-store' });
+      if (!res.ok) throw new Error(`http ${res.status}`);
+      config = await res.json();
+    } catch (err) {
+      // No /config.json (local dev, or a 404) — keep every hardcoded default,
+      // including the data-x-handle link wired by initXLink(). Never throw:
+      // a config failure must not touch playback.
+      return;
+    }
+    const handle = typeof config?.handle === 'string'
+      ? config.handle.trim().replace(/^@/, '')
+      : '';
+    // A config-supplied handle replaces the data-x-handle fallback.
+    if (handle) els.xLink.href = `https://x.com/${handle}`;
+    applyStationName(config?.station);
+  }
+
   function initAudioEvents() {
     els.audio.addEventListener('playing', () => {
       state.isPlaying = true;
       state.audioDown = false;
+      state.hasSignal = true; // audio is actually flowing — proven live
       clearAudioRetry();
       renderPlaybackUi();
       renderLiveState();
@@ -549,6 +639,9 @@
   function boot() {
     restorePrefs();
     initXLink();
+    // Overrides the X link + station name from /config.json when present;
+    // silently keeps the hardcoded defaults on failure (local dev has none).
+    applyStationConfig();
     initAudioEvents();
     initControls();
     initParallax();

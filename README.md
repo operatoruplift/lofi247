@@ -66,11 +66,17 @@ cp .env.example .env
 # Fill in: X_RTMP_URL + X_STREAM_KEY (see docs/X-STREAMING.md),
 #          ICECAST_SOURCE_PASSWORD, ICECAST_ADMIN_PASSWORD,
 #          STATION_NAME, OVERLAY_HANDLE
+# No X key yet? Leave X_STREAM_KEY at its placeholder to run in preview mode —
+# the web player + audio come up and the streamer stays idle (see below).
 nano .env
 
-# Add content (run these from your local machine)
-rsync -av ~/my-lofi-tracks/  user@vps:~/lofi247/music/
-rsync -av ~/my-loops/        user@vps:~/lofi247/visuals/
+# Add content (run these from your local machine).
+# --chmod=F644 forces every copied file world-readable: liquidsoap and the
+# streamer run as non-root uids, so a track synced from a tight-umask machine
+# silently never airs (all services "Up", ambient bed plays, real tracks don't).
+# Details: docs/VPS-SETUP.md#6-getting-music-and-visuals-onto-the-box
+rsync -av --chmod=F644 ~/my-lofi-tracks/  user@vps:~/lofi247/music/
+rsync -av --chmod=F644 ~/my-loops/        user@vps:~/lofi247/visuals/
 
 # Launch
 docker compose up -d
@@ -80,8 +86,16 @@ docker compose logs -f streamer
 ./scripts/status.sh
 ```
 
-Open `http://your-vps:8080` for the web player. Your X broadcast goes live once the
-encoder connects and you start the broadcast in X Live Studio — full click path in
+Open `http://your-vps:8080` for the web player.
+
+**No X key yet?** Leave `X_STREAM_KEY` at its placeholder (`your-x-stream-key`) and the
+streamer stays idle in **preview mode**: Icecast and the `:8080` web player still come
+up, so you can watch the whole stack work locally before you have X Premium or a real
+key. Fill the key in when you're ready to broadcast.
+
+Going live is **not** automatic once the encoder connects. When ffmpeg is pushing, X
+only shows the source as *receiving* — you still have to click **Go Live** in X Live
+Studio for anything to reach your timeline. Full click path in
 [docs/X-STREAMING.md](docs/X-STREAMING.md).
 
 To also run the optional Soulseek client:
@@ -117,6 +131,7 @@ docker compose --profile acquire up -d
 | [docs/X-STREAMING.md](docs/X-STREAMING.md) | Getting an X RTMP URL + stream key, encoder settings, 24/7 broadcast strategy, Restream fallback |
 | [docs/MUSIC.md](docs/MUSIC.md) | Sourcing music legally, ingest workflow, library conventions |
 | [docs/VISUALS.md](docs/VISUALS.md) | Generating ambient loops (Seedance 2.0), prepping them for the streamer |
+| [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | First-run failure modes by symptom — no audio, tracks not airing, blank web player, "not live on X" |
 
 ## Requirements
 
@@ -124,6 +139,12 @@ docker compose --profile acquire up -d
 - An X account with **X Premium** (required for RTMP stream keys)
 - Music you have the rights to broadcast
 - Optional: ambient video loops (the streamer generates a fallback visual if you have none)
+
+> [!NOTE]
+> "Runs forever" is the VPS side. X caps a single livestream at ~24 h and has no
+> broadcast-rotation API, so keeping the channel *visibly* live means a ~60-second
+> manual broadcast rotation once a day — see
+> [docs/X-STREAMING.md](docs/X-STREAMING.md#6-247-operation-how-restarts-interact-with-x-broadcasts).
 
 ## Credits
 
@@ -139,5 +160,10 @@ Visual loops generated with Seedance 2.0. Inspired by every lofi girl studying a
 
 ## License
 
-Code in this repo is yours to fork and run. The music and visuals you stream through
-it are your responsibility — see the warning above.
+The code in this repo is released under the [MIT License](LICENSE) — copyright ©
+2026 operatoruplift. Fork it, run it, modify it; just keep the license and copyright
+notice.
+
+The MIT License covers **this code only.** The music and visuals you stream through it
+are a separate matter and remain **your** responsibility to license — see the warning
+above and [docs/MUSIC.md](docs/MUSIC.md).

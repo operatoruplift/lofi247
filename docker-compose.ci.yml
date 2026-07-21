@@ -1,5 +1,6 @@
 # CI-only overrides: adds a dummy RTMP sink on the compose network so the
-# streamer has something real to push to, and publishes icecast for asserts.
+# streamer has something real to push to. CI assertions run against the web
+# service's :8080 surface (/radio proxy + /nowplaying.json), not icecast.
 # Used as: docker compose -f docker-compose.yml -f docker-compose.ci.yml ...
 services:
   rtmp-sink:

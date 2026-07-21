@@ -358,6 +358,19 @@ body.is-offair .badge-live .dot {
 
 body.is-offair .badge-live .dot::after { display: none; }
 
+/* Neutral pre-signal state: muted dot, no live-pulse, until real audio proves
+   the stream. Shipped on <body> so the very first paint doesn't assert "live". */
+body.is-connecting .badge-live {
+  color: var(--offair);
+  border-color: var(--line-soft);
+}
+
+body.is-connecting .badge-live .dot {
+  background: var(--offair);
+}
+
+body.is-connecting .badge-live .dot::after { display: none; }
+
 .x-link {
   display: inline-flex;
   align-items: center;
@@ -785,6 +798,9 @@ body.is-playing .play-hint { color: var(--amber-bright); }
 @media (max-width: 560px) {
   .controls { flex-wrap: wrap; }
   .control-copy { order: 3; flex-basis: 100%; text-align: center; }
+  /* key-hints is hidden here, so reserve two lines for the longest play-hint
+     ("reconnecting to the stream…") to stop the controls row jumping (CLS). */
+  .play-hint { min-height: calc(0.78rem * 1.5 * 2); }
   .vol-group { flex: 1 1 auto; justify-content: flex-end; }
   .vol-slider { width: clamp(96px, 40vw, 180px); }
   .key-hints { display: none; }

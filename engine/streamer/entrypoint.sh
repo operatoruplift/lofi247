@@ -41,6 +41,9 @@ NOWPLAYING_FILE="${WORK_DIR}/nowplaying.txt"
 
 RESTART_DELAY=5
 MISSING_KEY_SLEEP=300
+# The unedited value shipped in .env.example; treated as "not configured" so a
+# fresh `docker compose up` serves preview mode instead of fail-looping on X.
+X_STREAM_KEY_PLACEHOLDER="your-x-stream-key"
 
 mkdir -p "${WORK_DIR}"
 
@@ -106,12 +109,23 @@ esac
 
 GOP="$((2 * STREAM_FPS))"
 
-FONT_FILE="$(find /usr/share/fonts -name 'DejaVuSans.ttf' -print -quit 2>/dev/null || true)"
+# Prefer a Noto Sans CJK face: it covers Latin + CJK, so Japanese/Korean/Chinese
+# artist names (common in lofi) render instead of tofu boxes. Fall back to
+# DejaVuSans, then any font face (.ttf/.otf/.otc/.ttc — CJK collections are .ttc).
+FONT_FILE="$(find /usr/share/fonts -name 'NotoSansCJK-Regular.ttc' -print -quit 2>/dev/null || true)"
 if [ -z "${FONT_FILE}" ]; then
-  FONT_FILE="$(find /usr/share/fonts -name '*.ttf' -print -quit 2>/dev/null || true)"
+  FONT_FILE="$(find /usr/share/fonts -iname 'NotoSansCJK*' -print -quit 2>/dev/null || true)"
 fi
 if [ -z "${FONT_FILE}" ]; then
-  log "ERROR: no TTF font found under /usr/share/fonts; cannot draw overlays."
+  FONT_FILE="$(find /usr/share/fonts -name 'DejaVuSans.ttf' -print -quit 2>/dev/null || true)"
+fi
+if [ -z "${FONT_FILE}" ]; then
+  FONT_FILE="$(find /usr/share/fonts \
+    \( -iname '*.ttf' -o -iname '*.otf' -o -iname '*.otc' -o -iname '*.ttc' \) \
+    -print -quit 2>/dev/null || true)"
+fi
+if [ -z "${FONT_FILE}" ]; then
+  log "ERROR: no usable font found under /usr/share/fonts; cannot draw overlays."
   exit 1
 fi
 
@@ -232,8 +246,11 @@ redact_key() {
 }
 
 run_ffmpeg() {
-  # -rw_timeout: a silently hung icecast TCP read would otherwise freeze the
-  # stream forever without ever tripping the restart loop.
+  # -rw_timeout (input): a silently hung icecast TCP read would otherwise freeze
+  # the stream forever without ever tripping the restart loop.
+  # -rw_timeout (output, before -f flv): a half-open X connection can block the
+  # RTMP write for ~15 min (kernel TCP timeout) = undetected dead air; this makes
+  # a stalled push error out so the restart loop can recover.
   ffmpeg -hide_banner -nostdin -loglevel warning \
     -re -stream_loop -1 -f concat -safe 0 -i "${CONCAT_LIST}" \
     -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 \
@@ -245,6 +262,7 @@ run_ffmpeg() {
     -b:v "${VIDEO_BITRATE}" -maxrate "${VIDEO_BITRATE}" -bufsize "${BUFSIZE}" \
     -g "${GOP}" -keyint_min "${STREAM_FPS}" -sc_threshold 0 \
     -c:a aac -b:a "${AUDIO_BITRATE}" -ar 44100 -ac 2 \
+    -rw_timeout 15000000 \
     -f flv "${RTMP_TARGET}" > >(redact_key) 2>&1 &
   FFMPEG_PID=$!
   wait "${FFMPEG_PID}"
@@ -263,6 +281,14 @@ main() {
     if [ -z "${X_RTMP_URL}" ] || [ -z "${X_STREAM_KEY}" ]; then
       log "ERROR: X_RTMP_URL and/or X_STREAM_KEY are not set — cannot stream to X."
       log "       Fill them in .env (see .env.example), then restart this service."
+      snooze "${MISSING_KEY_SLEEP}"
+      continue
+    fi
+    # A fresh .env still carrying the .env.example placeholder is not a real key;
+    # serve preview mode rather than fail-looping on X with a bogus key.
+    if [ "${X_STREAM_KEY}" = "${X_STREAM_KEY_PLACEHOLDER}" ]; then
+      log "Preview mode: serving audio + web player, not pushing to X."
+      log "       X_STREAM_KEY is still the .env.example placeholder — set a real key in .env, then restart this service."
       snooze "${MISSING_KEY_SLEEP}"
       continue
     fi

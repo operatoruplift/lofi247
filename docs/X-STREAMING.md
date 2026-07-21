@@ -65,6 +65,14 @@ fallback if your region's RTMPS endpoint misbehaves.
 The streamer pushes to `$X_RTMP_URL/$X_STREAM_KEY`. Never commit `.env` (it's
 gitignored) and never paste the key into screenshots or logs.
 
+> [!TIP]
+> **No key yet? Preview mode.** If `X_STREAM_KEY` is left at its `.env.example`
+> placeholder (`your-x-stream-key`), the streamer detects it and stays idle instead
+> of trying to push — Icecast and the `:8080` web player still run, so you can bring
+> the whole stack up and watch it work before you have X Premium or a key. Drop in a
+> real key and `docker compose up -d` (or `docker compose restart streamer`) when
+> you're ready to broadcast.
+
 ## 4. Create a broadcast and go live
 
 1. In Live Studio, open **Broadcasts** → **Create Broadcast**.
@@ -76,6 +84,13 @@ gitignored) and never paste the key into screenshots or logs.
    and the now-playing overlay.
 5. Click **Go Live** (Live Studio also offers a *private test broadcast* — use it
    for your first run). The broadcast posts to your timeline.
+
+> [!IMPORTANT]
+> **A connected encoder is not a public broadcast.** Once ffmpeg is pushing, X marks
+> the source *receiving* and the broadcast page shows a preview — but nothing reaches
+> your timeline until you click **Go Live** in step 5. "The streamer logs look
+> healthy" and "I'm live on X" are two different states; a successful RTMP push only
+> gets you to the first.
 
 ## 5. Encoder settings X wants — and how this repo maps to them
 
