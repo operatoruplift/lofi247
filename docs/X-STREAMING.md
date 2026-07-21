@@ -102,7 +102,7 @@ X's published recommendations for RTMP ingest:
 | H.264/AVC video, Main or High profile (no HEVC) | — (baked into the streamer's ffmpeg args) | x264 |
 | Video bitrate up to ~9 Mbps | `VIDEO_BITRATE` | `3500k` default — plenty for slow ambient loops; raise toward `6000k` for 1080p |
 | Keyframe every 2 seconds | derived from `STREAM_FPS` (GOP = 2 × fps, within X's ≤3 s guidance) | `30` fps → keyframe interval 60 |
-| AAC-LC audio, **128 kbps or lower** | `AUDIO_BITRATE` | Default is `160k`; set `128k` to match X's guidance — X may re-encode or complain above it |
+| AAC-LC audio, **128 kbps or lower** | `AUDIO_BITRATE` | Default is `128k` — already at X's guidance; X may re-encode or complain above it |
 | ≥10 Mbps upload from the encoder | — | any VPS vastly exceeds this |
 
 Practical notes:
