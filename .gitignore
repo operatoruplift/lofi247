@@ -6,6 +6,11 @@
 # Media libraries live on the VPS, not in git
 music/*
 !music/.gitkeep
+# Original royalty-free starter tracks (CC0, synthesized) so the library
+# isn't empty on first boot — replace/supplement with your own licensed music.
+!music/amber-hours.mp3
+!music/rain-on-the-sill.mp3
+!music/last-train-home.mp3
 visuals/*
 !visuals/.gitkeep
 # Starter loops ship with the repo so the first deploy looks branded — and

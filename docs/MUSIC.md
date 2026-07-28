@@ -3,6 +3,15 @@
 How tracks get into the LOFI 247 rotation, and — first — why you must have the
 rights to every one of them.
 
+> [!NOTE]
+> **Starter tracks included.** The repo ships three original, synthesized
+> ambient tracks in `music/` (`amber-hours`, `rain-on-the-sill`,
+> `last-train-home`), released **CC0 / public domain** — so the library isn't
+> empty on first boot and you can preview the full experience (now-playing
+> overlay, rotation, web player) legally out of the box. They're atmospheric
+> placeholders, not sample-based lofi beats — replace or supplement them with
+> your own properly-licensed music using the sourcing options below.
+
 ```
 acquire (any legal source) -> ./downloads or anywhere
         -> verify rights -> tag ID3 metadata -> scripts/ingest-music.sh
