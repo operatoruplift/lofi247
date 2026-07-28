@@ -11,6 +11,13 @@ rights to every one of them.
 > overlay, rotation, web player) legally out of the box. They're atmospheric
 > placeholders, not sample-based lofi beats — replace or supplement them with
 > your own properly-licensed music using the sourcing options below.
+>
+> **Want a real batch fast?** Run [`scripts/fetch-cc-music.sh`](../scripts/fetch-cc-music.sh) —
+> it downloads ~13 license-verified CC0 / CC BY instrumental tracks (Kevin MacLeod,
+> Ketsa, HoliznaCC0, Joel Putman), normalizes them, and adds them to `music/`.
+> Every track was license-checked against its source; the CC BY ones require a
+> credit — see [ATTRIBUTION.md](../ATTRIBUTION.md). (These aren't committed to the
+> repo — they're re-downloadable, so the script keeps clones lean.)
 
 ```
 acquire (any legal source) -> ./downloads or anywhere

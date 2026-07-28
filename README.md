@@ -70,7 +70,11 @@ cp .env.example .env
 # the web player + audio come up and the streamer stays idle (see below).
 nano .env
 
-# Add content (run these from your local machine).
+# Add content. Quickest start — fetch a vetted batch of CC / public-domain
+# tracks straight onto the box (credits required: see ATTRIBUTION.md):
+./scripts/fetch-cc-music.sh
+
+# Or copy your own library over (run these from your local machine).
 # --chmod=F644 forces every copied file world-readable: liquidsoap and the
 # streamer run as non-root uids, so a track synced from a tight-umask machine
 # silently never airs (all services "Up", ambient bed plays, real tracks don't).
