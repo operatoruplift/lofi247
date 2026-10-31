@@ -155,7 +155,7 @@ Ubuntu image may not ship `git`):
 ```bash
 # on the fresh box, logged in as root
 apt-get update && apt-get install -y git
-git clone https://github.com/YOURNAME/lofi247.git /root/lofi247-bootstrap
+git clone https://github.com/operatoruplift/lofi247.git /root/lofi247-bootstrap
 /root/lofi247-bootstrap/scripts/vps-setup.sh
 ```
 
@@ -185,7 +185,7 @@ below runs as `lofi`.
 Clone into the default `REPO_DIR` (`/home/lofi/lofi247`) and bring the stack up:
 
 ```bash
-git clone https://github.com/YOURNAME/lofi247.git ~/lofi247
+git clone https://github.com/operatoruplift/lofi247.git ~/lofi247
 cd ~/lofi247
 cp .env.example .env
 nano .env      # X_RTMP_URL, X_STREAM_KEY, Icecast passwords, station branding
